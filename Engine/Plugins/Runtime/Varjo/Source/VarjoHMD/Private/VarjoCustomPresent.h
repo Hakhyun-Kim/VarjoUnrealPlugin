@@ -5,10 +5,9 @@
 #include "HeadMountedDisplayBase.h"
 #include "XRRenderBridge.h"
 
-#include "VarjoTextureSet.h"
-
 // Varjo API
 #include "Varjo.h"
+#include "Varjo_layers.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/WindowsHWrapper.h"
@@ -43,7 +42,7 @@ public:
 	bool Present(int& InOutSyncInterval) override;
 	virtual void BeginRendering();
 	void WaitSync();
-	virtual void FinishRendering();
+	virtual void FinishRendering(FRHICommandListImmediate& RHICmdList);
 	virtual void UpdateViewport(const FViewport& Viewport, FRHIViewport* InViewportRHI) = 0;
 	virtual void SetNeedReinitRendererAPI();
 	virtual bool NeedsNativePresent() override;
@@ -51,6 +50,7 @@ public:
 	virtual void Shutdown();
 	void PostPresent();
 	virtual bool CreateRenderTargetTexture(FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture) = 0;
+	virtual bool CreateDepthTargetTexture(FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture) = 0;
 	virtual void AliasTextureResources(FRHITexture* DestTexture, FRHITexture* SrcTexture) = 0;
 	void setResolutionFraction(float resolutionFraction) { m_resolutionFraction = resolutionFraction; };
 	float getResolutionFraction() const { return m_resolutionFraction; };
@@ -58,29 +58,30 @@ public:
 	void renderOcclusionMesh(FRHICommandList& RHICmdList, int viewIndex);
 	void handleVarjoEvents(UGameViewportClient* gameViewportClient);
 	void getFocusViewPosAndSize(EStereoscopicPass stereoPass, float& x, float& y, float& width, float& height) const;
+	void SetDepthSubmissionEnabled(bool enabled) { m_submitDepth = enabled; };
 
 protected:
 	virtual FTextureRHIRef CreateTexture(ID3D11Texture2D* d3dTexture) const = 0;
-	VarjoTextureSetPtr CreateTextureSet();
+	class FVarjoHMD* m_varjoHMD;
 	ID3D11Device* m_device;
 	ID3D11DeviceContext* m_deviceContext;
 	varjo_Session* m_session;
+	varjo_GraphicsInfo* m_graphicsInfo;
+	varjo_SubmitInfo* m_submitInfo;
+	varjo_SwapChain* m_swapChain;
+	varjo_SwapChain* m_depthSwapChain;
 	ID3D11Texture2D* m_texture;
-	VarjoTextureSetPtr m_textureSet;
 	float m_resolutionFraction = 1.0f;
 	bool m_inFrame = false;
+	bool m_submitDepth = false;
 
 	// Varjo API related
-	varjo_GraphicsInfo* m_graphicsInfo;
 	varjo_FrameInfo* m_frameInfo;
-	varjo_SubmitInfo* m_submitInfo;
 
 private:
 	void setupOcclusionMeshes();
 
 	varjo_Event* m_event;
-	TArray<FTextureRHIRef> CreateTextures(const TArray<ID3D11Texture2D*>& d3dTextures) const;
-	class FVarjoHMD* m_varjoHMD;
 	varjo_Mesh2Df* m_varjoOcclusionMesh;
 	FHMDViewMesh m_occlusionMeshes[4];
 	bool m_buttonEventExists = false;

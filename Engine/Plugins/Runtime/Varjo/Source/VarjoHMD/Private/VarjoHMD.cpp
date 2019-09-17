@@ -840,7 +840,7 @@ bool FVarjoHMD::EnableStereo(bool bStereo)
 	//SetConsolveVariable(TEXT("r.RayTracing.Translucency"), bStereo ? 0:-1);
 #endif
 
-//#ifndef VARJO_USE_CUSTOM_ENGINE
+#ifndef VARJO_USE_CUSTOM_ENGINE
 	static const auto InstancedStereoCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.InstancedStereo"));
 	const bool bIsInstancedStereoEnabled = (InstancedStereoCVar && InstancedStereoCVar->GetValueOnAnyThread() != 0);
 
@@ -848,7 +848,7 @@ bool FVarjoHMD::EnableStereo(bool bStereo)
 	{
 		UE_LOG(LogVarjoHMD, Error, TEXT("Varjo Plugin not supported with instanced stereo rendering enabled, please use Varjo Unreal Engine instead - https://varjo.com/use-center/developers/unreal/using-varjos-unreal-engine/"));
 	}
-//#endif
+#endif
 
 	if (bStereo)
 	{
@@ -1022,15 +1022,10 @@ bool FVarjoHMD::NeedReAllocateViewportRenderTarget(const FViewport& Viewport)
 	return false;
 }
 
-bool FVarjoHMD::GetButtonEvent(int& button, bool& pressed) const
+bool FVarjoHMD::NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget)
 {
-	return m_bridge ? m_bridge->getButtonEvent(button, pressed): false;
-}
-
-void FVarjoHMD::SetHeadtrackingEnabled(bool enabled)
-{
-	FVarjoXRCamera* pVarjoXRCamera = static_cast<FVarjoXRCamera*>(FVarjoHMD::GetXRCamera(0).Get());
-	pVarjoXRCamera->HeadtrackingEnabled = enabled;
+	FIntVector CurrentSize = DepthTarget->GetRenderTargetItem().TargetableTexture->GetSizeXYZ();
+	return CurrentSize.X != 4096 || CurrentSize.Y != 3200;
 }
 
 bool FVarjoHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
@@ -1044,6 +1039,37 @@ bool FVarjoHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 S
 		FRHIResourceCreateInfo CreateInfo;
 		RHICreateTargetableShaderResource2D(4096, 3200, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, CreateInfo, OutTargetableTexture, OutShaderResourceTexture);
 		return true;
+	}
+}
+
+bool FVarjoHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
+{
+	if (SizeX == 4096 && SizeY == 3200 && m_bridge->isInitialized())
+	{
+		return m_bridge->CreateDepthTargetTexture(OutTargetableTexture, OutShaderResourceTexture);
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool FVarjoHMD::GetButtonEvent(int& button, bool& pressed) const
+{
+	return m_bridge ? m_bridge->getButtonEvent(button, pressed) : false;
+}
+
+void FVarjoHMD::SetHeadtrackingEnabled(bool enabled)
+{
+	FVarjoXRCamera* pVarjoXRCamera = static_cast<FVarjoXRCamera*>(FVarjoHMD::GetXRCamera(0).Get());
+	pVarjoXRCamera->HeadtrackingEnabled = enabled;
+}
+
+void FVarjoHMD::SetDepthSubmissionEnabled(bool enabled)
+{
+	if (m_bridge && m_bridge->isInitialized())
+	{
+		m_bridge->SetDepthSubmissionEnabled(enabled);
 	}
 }
 
@@ -1063,6 +1089,11 @@ void FVarjoHMD::SetupViewFamily(FSceneViewFamily& InViewFamily)
 #ifndef VARJO_USE_CUSTOM_ENGINE
 	InViewFamily.EngineShowFlags.Vignette = 0;
 #endif
+}
+
+void FVarjoHMD::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
+{
+	m_bridge->FinishRendering(RHICmdList);
 }
 
 void FVarjoHMD::DrawHiddenAreaMesh_RenderThread(FRHICommandList& RHICmdList, EStereoscopicPass StereoPass) const
@@ -1089,4 +1120,88 @@ void FVarjoHMD::DrawHiddenAreaMesh_RenderThread(FRHICommandList& RHICmdList, ESt
 		return;
 	}
 	m_bridge ? m_bridge->renderOcclusionMesh(RHICmdList, viewIndex):0;
+}
+
+class CopyDepthTexturePS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(CopyDepthTexturePS, Global);
+public:
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM4);
+	}
+
+	CopyDepthTexturePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+		FGlobalShader(Initializer)
+	{
+		ShadowDepthTexture.Bind(Initializer.ParameterMap, TEXT("ShadowDepthTexture"));
+		ShadowDepthSampler.Bind(Initializer.ParameterMap, TEXT("ShadowDepthSampler"));
+	}
+	CopyDepthTexturePS() {}
+
+	void SetParameters(FRHICommandList& RHICmdList, FTexture2DRHIRef SrcTexture)
+	{
+		SetTextureParameter(RHICmdList, GetPixelShader(), ShadowDepthTexture, ShadowDepthSampler, TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), SrcTexture);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << ShadowDepthTexture;
+		Ar << ShadowDepthSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderResourceParameter ShadowDepthTexture;
+	FShaderResourceParameter ShadowDepthSampler;
+};
+
+IMPLEMENT_SHADER_TYPE(, CopyDepthTexturePS, TEXT("/Engine/Private/CopyShadowMaps.usf"), TEXT("Copy2DDepthPS"), SF_Pixel);
+
+void FVarjoHMD::CopyDepthTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef dst, FTexture2DRHIRef src)
+{
+	check(IsInRenderingThread());
+
+	FRHIRenderPassInfo RPInfo(dst, EDepthStencilTargetActions::DontLoad_DontStore, nullptr, FExclusiveDepthStencil::DepthWrite);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("VarjoHMD_CopyDepthTexture"));
+	{
+		const uint32 viewportWidth = dst->GetSizeX();
+		const uint32 viewportHeight = dst->GetSizeY();
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+		RHICmdList.SetViewport(0, 0, 0, viewportWidth, viewportHeight, 1.0f);
+
+		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<true, CF_Always>::GetRHI();
+
+		const auto featureLevel = GMaxRHIFeatureLevel;
+		auto shaderMap = GetGlobalShaderMap(featureLevel);
+
+		TShaderMapRef<FScreenVS> vertexShader(shaderMap);
+		TShaderMapRef<CopyDepthTexturePS> pixelShader(shaderMap);
+
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*vertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*pixelShader);
+		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+		pixelShader->SetParameters(RHICmdList, src);
+
+		m_rendererModule->DrawRectangle(
+			RHICmdList,
+			0, 0, // X, Y
+			viewportWidth, viewportHeight, // SizeX, SizeY
+			0.0f, 0.0f, // U, V
+			1.0f, 1.0f, // SizeU, SizeV
+			FIntPoint(viewportWidth, viewportHeight), // TargetSize
+			FIntPoint(1, 1), // TextureSize
+			*vertexShader,
+			EDRF_Default);
+	}
+	RHICmdList.EndRenderPass();
 }

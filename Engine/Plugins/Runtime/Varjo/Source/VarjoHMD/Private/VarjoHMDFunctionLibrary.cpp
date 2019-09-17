@@ -123,3 +123,14 @@ void UVarjoHMDFunctionLibrary::SetHeadtrackingEnabled(bool Enabled)
 	}
 }
 
+void UVarjoHMDFunctionLibrary::SetDepthSubmissionEnabled(bool Enabled)
+{
+#ifdef VARJO_USE_CUSTOM_ENGINE
+	FVarjoHMD* VarjoHMD = GetVarjoHMD();
+	if (VarjoHMD)
+	{
+		VarjoHMD->SetDepthSubmissionEnabled(Enabled);
+	}
+#endif
+}
+

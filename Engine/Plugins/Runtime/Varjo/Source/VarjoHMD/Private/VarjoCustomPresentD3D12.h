@@ -19,6 +19,8 @@ public:
 	FTextureRHIRef CreateTexture(ID3D11Texture2D* d3dTexture) const override { return {}; };
 	void AliasTextureResources(FRHITexture* DestTexture, FRHITexture* SrcTexture) override {};
 	virtual bool CreateRenderTargetTexture(FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture) override;
+	virtual bool CreateDepthTargetTexture(FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture) override;
+	virtual void BeginRendering() override;
 
 private:
 	ID3D11On12Device* m_d3d11On12Device;

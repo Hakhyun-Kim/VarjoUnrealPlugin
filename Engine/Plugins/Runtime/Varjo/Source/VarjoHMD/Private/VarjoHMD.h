@@ -101,7 +101,9 @@ public:
 	virtual bool ShouldUseSeparateRenderTarget() const override { return m_stereoEnabled; }
 	virtual void CalculateRenderTargetSize(const FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY) override;
 	virtual bool NeedReAllocateViewportRenderTarget(const class FViewport& Viewport) override;
+	virtual bool NeedReAllocateDepthTexture(const TRefCountPtr<IPooledRenderTarget>& DepthTarget) override;
 	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+	virtual bool AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 	virtual void UpdateViewportRHIBridge(bool bUseSeparateRenderTarget, const class FViewport& Viewport, FRHIViewport* const ViewportRHI) override;
 	virtual IStereoRenderTargetManager* GetRenderTargetManager() override { return this; }
 	virtual FXRRenderBridge* GetActiveRenderBridge_GameThread(bool bUseSeparateRenderTarget) override;
@@ -112,8 +114,10 @@ public:
 	virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override {};
 	virtual void PreRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override {};
 	virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) override {};
+	virtual void PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily);
 
 	void SetHeadtrackingEnabled(bool enabled);
+	void SetDepthSubmissionEnabled(bool enabled);
 
 	// VarjoHMDFunctionLibrary
 	VARJOHMD_API bool GetButtonEvent(int& button, bool& pressed) const;
@@ -128,6 +132,8 @@ public:
 	vr::IVRSystem* GetVRSystem() const { return m_VRSystem; }
 	void SetHMDVisibility(HMDVisiblityStatus status);
 	HMDVisiblityStatus GetHMDVisibility();
+
+	void CopyDepthTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef dst, FTexture2DRHIRef src);
 
 	static pVRGetGenericInterface VRGetGenericInterfaceFn;
 

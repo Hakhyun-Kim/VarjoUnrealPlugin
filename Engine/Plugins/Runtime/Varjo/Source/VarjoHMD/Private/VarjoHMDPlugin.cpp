@@ -33,8 +33,23 @@ void FVarjoHMDPlugin::ShutdownModule()
 
 bool FVarjoHMDPlugin::IsHMDConnected()
 {
-	EnsureVarjoDllLoaded();
-	return varjo_IsAvailable() == varjo_True;
+	// HMD connection detection not supported for versions prior to 1.4 
+	if (varjo_GetVersion() < VARJO_MAKE_VERSION(1, 4, 0, 0))
+		return true;
+
+	auto session = varjo_SessionInit();
+
+	if (!session)
+		return false;
+
+	bool isHMDConnected = false;
+
+	varjo_SyncProperties(session);
+	if (varjo_HasProperty(session, varjo_PropertyKey_HMDConnected))
+		isHMDConnected = (varjo_GetPropertyBool(session, varjo_PropertyKey_HMDConnected) == varjo_True);
+
+	varjo_SessionShutDown(session);
+	return isHMDConnected;
 }
 
 uint64 FVarjoHMDPlugin::GetGraphicsAdapterLuid()
@@ -79,8 +94,6 @@ bool FVarjoHMDPlugin::EnsureVarjoDllLoaded()
 
 TSharedPtr< class IXRTrackingSystem, ESPMode::ThreadSafe > FVarjoHMDPlugin::CreateTrackingSystem()
 {
-	EnsureVarjoDllLoaded();
-	
 	FString RootOpenVRPath = FPaths::EngineDir() / FString::Printf(TEXT("Binaries/ThirdParty/OpenVR/%s/Win64/"), OPENVR_SDK_VER);
 
 	FPlatformProcess::PushDllDirectory(*RootOpenVRPath);
@@ -119,6 +132,17 @@ vr::IVRSystem* FVarjoHMDPlugin::GetVRSystem() const
 	}
 
 	return nullptr;
+}
+
+bool FVarjoHMDPlugin::PreInit()
+{
+	if (EnsureVarjoDllLoaded() == false)
+		return false;
+
+	if (varjo_IsAvailable() != varjo_True)
+		return false;
+
+	return true;
 }
 
 IMPLEMENT_MODULE(FVarjoHMDPlugin, VarjoHMD)

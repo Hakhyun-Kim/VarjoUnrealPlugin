@@ -72,6 +72,12 @@ void VarjoCustomPresentD3D12::varjoInit()
 	});
 }
 
+void VarjoCustomPresentD3D12::BeginRendering()
+{
+	VarjoCustomPresent::BeginRendering();
+	varjo_BeginFrame(m_session, m_submitInfo);
+}
+
 void VarjoCustomPresentD3D12::varjoSubmit()
 {
 	// Check that all OK
@@ -152,3 +158,13 @@ bool VarjoCustomPresentD3D12::CreateRenderTargetTexture(FTexture2DRHIRef& OutTar
 	RHICreateTargetableShaderResource2D(4096, 3200, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, CreateInfo, OutTargetableTexture, OutShaderResourceTexture);
 	return true;
 }
+
+bool VarjoCustomPresentD3D12::CreateDepthTargetTexture(FTexture2DRHIRef& OutTargetableTexture,
+	FTexture2DRHIRef& OutShaderResourceTexture)
+{
+	FRHIResourceCreateInfo CreateInfo;
+	CreateInfo.ClearValueBinding = FClearValueBinding(0.0f);
+	RHICreateTargetableShaderResource2D(4096, 3200, PF_DepthStencil, 1, TexCreate_None, TexCreate_DepthStencilTargetable, false, CreateInfo, OutTargetableTexture, OutShaderResourceTexture);
+	return true;
+}
+

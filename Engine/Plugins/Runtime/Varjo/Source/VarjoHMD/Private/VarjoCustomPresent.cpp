@@ -10,10 +10,12 @@
 
 VarjoCustomPresent::VarjoCustomPresent(FVarjoHMD* varjoHMD)
 	: m_session(varjoHMD->m_session)
-	, m_texture(nullptr)
 	, m_graphicsInfo(nullptr)
-	, m_frameInfo(nullptr)
 	, m_submitInfo(nullptr)
+	, m_swapChain(nullptr)
+	, m_depthSwapChain(nullptr)
+	, m_texture(nullptr)
+	, m_frameInfo(nullptr)
 	, m_event(nullptr)
 	, m_varjoHMD(varjoHMD)
 	, m_varjoOcclusionMesh(nullptr)
@@ -102,7 +104,6 @@ void VarjoCustomPresent::BeginRendering()
 		Present(SyncInterval);
 	}
 	WaitSync();
-	varjo_BeginFrame(m_session, m_submitInfo);
 	m_inFrame = true;
 }
 
@@ -204,7 +205,7 @@ void VarjoCustomPresent::renderOcclusionMesh(FRHICommandList& RHICmdList, int vi
 	RHICmdList.DrawIndexedPrimitive(Mesh.IndexBufferRHI, 0, 0, Mesh.NumVertices, 0, Mesh.NumTriangles, 1);
 }
 
-void VarjoCustomPresent::FinishRendering()
+void VarjoCustomPresent::FinishRendering(FRHICommandListImmediate& RHICmdList)
 {
 }
 
@@ -247,18 +248,27 @@ void VarjoCustomPresent::Shutdown()
 			m_frameInfo = nullptr;
 		}
 
+		if (m_swapChain != nullptr)
+		{
+			varjo_FreeSwapChain(m_swapChain);
+			m_swapChain = nullptr;
+		}
+
+		if (m_depthSwapChain != nullptr)
+		{
+			varjo_FreeSwapChain(m_depthSwapChain);
+			m_depthSwapChain = nullptr;
+		}
+
 		if (m_submitInfo)
 		{
 			varjo_FreeSubmitInfo(m_submitInfo);
 			m_submitInfo = nullptr;
 		}
 
-		if (m_graphicsInfo != nullptr)
-		{
-			varjo_D3D11ShutDown(m_session);
-			m_graphicsInfo = nullptr;
-		}
+		varjo_D3D11ShutDown(m_session);
 
+		m_graphicsInfo = nullptr;
 		m_session = nullptr;
 		});
 
@@ -290,34 +300,6 @@ TArray<ID3D11Texture2D*> GetSwapChainTextures(varjo_Session* session, varjo_Grap
 	}
 
 	return d3dTextures;
-}
-
-TArray<FTextureRHIRef> VarjoCustomPresent::CreateTextures(const TArray<ID3D11Texture2D*>& d3dTextures) const
-{
-	TArray<FTextureRHIRef> rhiTextures;
-	for (int i = 0; i < d3dTextures.Num(); i++)
-	{
-		const FTextureRHIRef rhiTexture = CreateTexture(d3dTextures[i]);
-		rhiTextures.Add(rhiTexture);
-	}
-	return rhiTextures;
-}
-
-VarjoTextureSetPtr VarjoCustomPresent::CreateTextureSet()
-{
-	if (isInitialized() == false)
-	{
-		FlushRenderingCommands();
-		if (isInitialized() == false)
-		{
-			UE_LOG(LogHMD, Fatal, TEXT("Varjo is not initialized."));
-			return nullptr;
-		}
-	}
-	TArray<ID3D11Texture2D*> d3dTextures = GetSwapChainTextures(m_session, m_graphicsInfo);
-	const FTextureRHIRef rhiTexture = CreateTexture(d3dTextures[0]);
-	const TArray<FTextureRHIRef> rhiTextures = CreateTextures(d3dTextures);
-	return MakeShareable(new VarjoTextureSet(m_session, this, rhiTexture, rhiTextures));
 }
 
 void VarjoCustomPresent::getFocusViewPosAndSize(EStereoscopicPass stereoPass, float& x, float& y, float& width, float& height) const

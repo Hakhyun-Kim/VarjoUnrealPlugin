@@ -80,4 +80,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "VarjoHMD")
 	static void SetHeadtrackingEnabled(bool Enabled);
+
+	/**
+	 * Sets whether Unreal should send the depth buffer to the Varjo stack or not
+	 * Warning: Works only with Varjo's custom UnrealEngine
+	 * @param	Enabled		True if Unreal should send the depth buffer, false otherwise
+	 */
+	UFUNCTION(BlueprintCallable, Category = "VarjoHMD")
+	static void SetDepthSubmissionEnabled(bool Enabled);
 };

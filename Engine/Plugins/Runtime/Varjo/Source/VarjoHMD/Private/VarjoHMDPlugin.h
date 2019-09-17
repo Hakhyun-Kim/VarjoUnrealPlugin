@@ -15,6 +15,7 @@ public:
 	virtual TSharedPtr< class IXRTrackingSystem, ESPMode::ThreadSafe > CreateTrackingSystem();
 	virtual FString GetModuleKeyName() const override;
 	virtual vr::IVRSystem* GetVRSystem() const override;
+	virtual bool PreInit() override;
 
 private:
 	bool LoadDll(FString path);
